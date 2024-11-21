@@ -1,4 +1,5 @@
 import java.util.concurrent.Semaphore;
+import java.util.Random;
 
 public class SimpleProducerConsumer {
 
@@ -6,6 +7,7 @@ public class SimpleProducerConsumer {
     private static int[] buffer;
     private static int in = 0; // Producer's index in the buffer
     private static int out = 0; // Consumer's index in the buffer
+    private static final int RandMax = 100; // Maximum value for random items
 
     // Semaphores for synchronization
     private static final Semaphore producerTurn = new Semaphore(1); // Start with producer's turn
@@ -31,15 +33,16 @@ public class SimpleProducerConsumer {
 
     // Producer thread
     static class Producer implements Runnable {
+        private final Random random = new Random(); // Random number generator
+
         @Override
         public void run() {
-            int item = 0; // Item to produce
             while (!Thread.currentThread().isInterrupted()) {
                 try {
                     producerTurn.acquire(); // Wait for the producer's turn
                     System.out.println("Producer is running...");
                     for (int i = 0; i < 5; i++) { // Produce 5 items
-                        item++;
+                        int item = random.nextInt(RandMax + 1); // Generate random item (0 to RandMax)
                         insert_item(item);
                         Thread.sleep(500); // Simulate production time per item
                     }
