@@ -9,6 +9,4 @@ java Prod
 
 
 # SLeeping Teaching Assistant 
-javac TA.java
 
-java TA 
