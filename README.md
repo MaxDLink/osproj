@@ -1,12 +1,7 @@
-
-
-# Producer Consumer 
+# Producer Consumer
 
 javac Prod.java
 
 java Prod
 
-
-
-# SLeeping Teaching Assistant 
-
+# Sleeping Teaching Assistant
