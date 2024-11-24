@@ -1,6 +1,10 @@
+import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Queue;
+import java.util.Random;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.CountDownLatch; // Countdown latch makes student threads wait until producer thread is done producing all student threads 
 
 public class SleepingTA {
 
@@ -9,6 +13,11 @@ public class SleepingTA {
     private static final Semaphore chairs = new Semaphore(3); // Three chairs in the hallway
     private static final Queue<Integer> waitingStudents = new LinkedList<>(); // Queue for waiting students
     private static volatile int currentStudent = -1; // Tracks the student being helped (-1 means no one)
+    private static volatile int totalStudentsHelped = 0; // Total number of students helped by the TA
+    private static volatile int totalStudents = 100; // Total number of students in the system
+    // CountDownLatch source:
+    // https://stackoverflow.com/questions/4691533/java-wait-for-thread-to-finish
+    private static final CountDownLatch startSignal = new CountDownLatch(1);
 
     // TA thread
     static class TA implements Runnable {
@@ -16,7 +25,6 @@ public class SleepingTA {
         public void run() {
             while (true) {
                 try {
-                    // Wait for a student to wake the TA
                     synchronized (waitingStudents) {
                         if (waitingStudents.isEmpty()) {
                             System.out.println("TA is sleeping...");
@@ -24,15 +32,33 @@ public class SleepingTA {
                         }
                     }
 
-                    // Help the next student
+                    // Acquire TA's own semaphore before helping a student
                     taSemaphore.acquire();
+
                     synchronized (waitingStudents) {
                         currentStudent = waitingStudents.poll(); // Get the next student in line
-                        System.out.println("TA is helping Student " + currentStudent + "...");
+                        if (currentStudent != -1) {
+                            chairs.release(); // Release the chair
+                            System.out.println("TA is helping Student " + currentStudent + "...");
+                            waitingStudents.notifyAll(); // Notify all students
+                        } else {
+                            // No student to help
+                            taSemaphore.release();
+                            continue;
+                        }
                     }
-                    Thread.sleep(2000); // Simulate helping time
-                    System.out.println("TA finished helping Student " + currentStudent + ".");
-                    currentStudent = -1; // Reset after helping
+
+                    // Simulate helping time (you can randomize this)
+                    Thread.sleep(2000);
+
+                    synchronized (waitingStudents) {
+                        System.out.println("TA finished helping Student " + currentStudent + ".");
+                        currentStudent = -1; // Reset after helping
+                        totalStudentsHelped++; // Increment totalStudentsHelped
+                        waitingStudents.notifyAll(); // Notify all students
+                    }
+
+                    // Release TA's semaphore
                     taSemaphore.release();
 
                 } catch (InterruptedException e) {
@@ -47,14 +73,20 @@ public class SleepingTA {
     // Student thread
     static class Student implements Runnable {
         private final int studentId;
+        private int waitTime; // Random wait time assigned to each student
 
-        public Student(int studentId) {
+        public Student(int studentId, int waitTime) {
             this.studentId = studentId;
+            this.waitTime = waitTime;
         }
 
         @Override
         public void run() {
             try {
+                // Wait until the producer has finished creating all students
+                startSignal.await(); // Each student thread waits until the latch value 1 is counted down by the
+                                     // producer
+
                 while (true) {
                     synchronized (waitingStudents) {
                         if (studentId == currentStudent) {
@@ -70,16 +102,41 @@ public class SleepingTA {
                     if (chairs.tryAcquire()) { // Try to get a chair in the hallway
                         synchronized (waitingStudents) {
                             waitingStudents.add(studentId);
-                            System.out.println("Student " + studentId + " is waiting in the hallway...");
+                            System.out.println("Student " + studentId + " is waiting in the hallway with patience "
+                                    + waitTime + " ms");
                             waitingStudents.notify(); // Wake up the TA if they're sleeping
                         }
 
-                        taSemaphore.acquire(); // Wait for TA's availability
-                        System.out.println("Student " + studentId + " is being helped by the TA...");
-                        taSemaphore.release();
+                        synchronized (waitingStudents) {
+                            long startTime = System.currentTimeMillis();
+                            long remainingWaitTime = waitTime;
+                            while (studentId != currentStudent && remainingWaitTime > 0) {
+                                waitingStudents.wait(remainingWaitTime);
+                                long elapsedTime = System.currentTimeMillis() - startTime;
+                                remainingWaitTime = waitTime - elapsedTime;
+                            }
+
+                            if (studentId == currentStudent) {
+                                // Student is being helped
+                                System.out.println("Student " + studentId + " is being helped by the TA...");
+                                // Wait until TA finishes helping
+                                waitingStudents.wait();
+                                // Exit the loop after being helped
+                                break;
+                            } else {
+                                // Timeout occurred
+                                System.out.println(
+                                        "Student " + studentId + " got tired of waiting and will try again later.");
+                                waitingStudents.remove(Integer.valueOf(studentId));
+                                chairs.release();
+                                // Go back to working on assignments and try again later
+                            }
+                        }
 
                     } else {
-                        System.out.println("Student " + studentId + " found no available chairs and left.");
+                        System.out.println(
+                                "Student " + studentId + " found no available chairs and will try again later.");
+                        // Go back to working on assignments and try again later
                     }
                 }
             } catch (InterruptedException e) {
@@ -89,41 +146,89 @@ public class SleepingTA {
         }
     }
 
+    // Producer thread that creates and starts n student threads
+    static class Producer implements Runnable {
+        private int n; // Number of students to create
+        private List<Thread> studentThreads;
+
+        public Producer(int n, List<Thread> studentThreads) {
+            this.n = n;
+            this.studentThreads = studentThreads;
+        }
+
+        @Override
+        public void run() {
+            Random random = new Random(); // Random number generator
+
+            for (int i = 1; i <= n; i++) {
+                // Generate a random wait time between 1000ms and 3000ms
+                int waitTime = random.nextInt(2000) + 1000;
+
+                Thread studentThread = new Thread(new Student(i, waitTime), "Student-" + i);
+                studentThread.start();
+                studentThreads.add(studentThread); // Add student thread to the list
+                System.out.println("Producer created and started Student " + i);
+                try {
+                    Thread.sleep(500); // Optional: Simulate time between creating students
+                } catch (InterruptedException e) {
+                    System.out.println("Producer was interrupted.");
+                    Thread.currentThread().interrupt();
+                    break; // Exit if interrupted
+                }
+            }
+            System.out.println("Producer has created all " + n + " students.");
+
+            // Release the latch to allow student threads to proceed
+            startSignal.countDown();
+        }
+    }
+
     public static void main(String[] args) {
 
+        // Number of students
+        int n = 10; // Reduced for demonstration purposes
+        totalStudents = n;
+
         // Create and start the TA thread
-        Thread taThread = new Thread(new TA());
+        Thread taThread = new Thread(new TA(), "TA");
         taThread.start();
 
-        // Create and start multiple student threads
-        Thread student1 = new Thread(new Student(1));
-        Thread student2 = new Thread(new Student(2));
-        Thread student3 = new Thread(new Student(3));
-        Thread student4 = new Thread(new Student(4));
-        Thread student5 = new Thread(new Student(5));
+        List<Thread> studentThreads = new ArrayList<>();
 
-        student1.start();
-        student2.start();
-        student3.start();
-        student4.start();
-        student5.start();
+        // Create and start the producer thread
+        Producer producer = new Producer(n, studentThreads);
+        Thread producerThread = new Thread(producer, "Producer");
+        producerThread.start();
 
-        // Main thread sleeps for 20 seconds
         try {
-            Thread.sleep(20000); // Allow threads to run for 20 seconds
+            producerThread.join(); // Waits for the producer thread to finish before continuing with main thread
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
 
-        // Interrupt all threads for graceful termination
-        System.out.println("Main thread interrupting all threads...");
-        taThread.interrupt();
-        student1.interrupt();
-        student2.interrupt();
-        student3.interrupt();
-        student4.interrupt();
-        student5.interrupt();
+        System.out.println("All Student threads have been created.");
 
-        System.out.println("Program terminated.");
+        // Wait until all students have been helped
+        while (totalStudentsHelped < n) { // Main will wait until all students have been helped
+            try {
+                Thread.sleep(1000); // Check every second
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        // Interrupt all threads for graceful termination
+        System.out.println("Students helped: " + totalStudentsHelped);
+        System.out.println("Main thread interrupting all threads...");
+        // Interrupt TA thread
+        taThread.interrupt();
+        // Interrupt all student threads for graceful termination
+        System.out.println("Main thread interrupting all student threads...");
+        for (Thread studentThread : studentThreads) {
+            studentThread.interrupt();
+        }
+
     }
+
 }

@@ -27,7 +27,7 @@ public class ProducerConsumer {
             mutex.acquire(); // Lock the buffer
             buffer[in] = item; // Add the item to the buffer
             System.out.println(Thread.currentThread().getName() + " produced: " + item + " at index " + in);
-            in = (in + 1) % buffer.length; // Move to the next index circularly
+            in = (in + 1) % buffer.length; // Move to the next index circularly. Found from substack link: https://stackoverflow.com/questions/35680026/circular-buffer-in-java 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {
