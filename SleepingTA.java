@@ -14,7 +14,6 @@ public class SleepingTA {
     private static final Queue<Integer> waitingStudents = new LinkedList<>(); // Queue for waiting students
     private static volatile int currentStudent = -1; // Tracks the student being helped (-1 means no one)
     private static volatile int totalStudentsHelped = 0; // Total number of students helped by the TA
-    private static volatile int totalStudents = 100; // Total number of students in the system
     // CountDownLatch source:
     // https://stackoverflow.com/questions/4691533/java-wait-for-thread-to-finish
     private static final CountDownLatch startSignal = new CountDownLatch(1);
@@ -187,7 +186,6 @@ public class SleepingTA {
 
         // Number of students
         int n = 10; // Reduced for demonstration purposes
-        totalStudents = n;
 
         // Create and start the TA thread
         Thread taThread = new Thread(new TA(), "TA");
