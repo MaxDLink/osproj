@@ -10,9 +10,10 @@ public class SleepingTA { // main class to encapsulate all components of the sim
 
     // Semaphores and shared state
     private static final Semaphore taSemaphore = new Semaphore(1); // Only one student can see the TA at a time so mark
-    // TODO - is 1 only 1 resource? etc? // this semaphore with a 1 resource
-    private static final Semaphore chairs = new Semaphore(3); // Three chairs in the hallway so this semaphore gets 3
-    // TODO - why is this integer typed? // resources
+                                                                   // this semaphore with a 1 resource/permit
+    private static final Semaphore chairs = new Semaphore(3); // Three chairs in the hallway so this semaphore
+                                                              // gets 3 resources/permits
+    // Integer typed Queue because it stores student ID's
     private static final Queue<Integer> waitingStudents = new LinkedList<>(); // Queue for waiting students of type
                                                                               // linked list & integer type for student
                                                                               // ID storage
@@ -58,13 +59,15 @@ public class SleepingTA { // main class to encapsulate all components of the sim
                             System.out.println("TA is helping Student " + currentStudent + "...");
                             waitingStudents.notifyAll(); // Notify all students. This wakes up any student threads
                                                          // waiting on waitingStudent queue
-                                                         // TODO - update the head of the queue???
+                                                         // This notify command wakes up all student threads that call
+                                                         // waitingStudents.wait()
                         } else { // currentStudent must be -1
                             // No student to help, release the semaphore to allow another student to be
                             // helped & continue with the loop
-                            taSemaphore.release(); // TODO - why is the semaphore released here? What does releasing the
-                                                   // semaphore do?
-                            continue; // TODO - proceed with next loop iteration?
+                            taSemaphore.release(); // releasing the semaphore lets other students acquire it in the
+                                                   // future E.G. seek help from TA
+                            continue; // Skips the current code in the loop & proceeds with the next iteration because
+                                      // the TA has no student to help
                         }
                     }
 
@@ -77,7 +80,7 @@ public class SleepingTA { // main class to encapsulate all components of the sim
                         currentStudent = -1; // Reset flag after helping the currentStudent
                         totalStudentsHelped++; // Increment totalStudentsHelped so that program eventually terminates
                                                // when all students are helped
-                        waitingStudents.notifyAll(); // Notify all students //TODO - update the head of the queue?
+                        waitingStudents.notifyAll(); // Notify all students who call waitingStudents.wait()
                     }
 
                     // Release TA's semaphore to allow another student to be helped
@@ -116,8 +119,8 @@ public class SleepingTA { // main class to encapsulate all components of the sim
                         if (studentId == currentStudent) { // if the current student is the student being helped then
                                                            // they wait on waitingStudents
                             // Student is being helped, skip working logic
-                            waitingStudents.wait(); // TODO - what does this line do? Makes the queue wait? So the head
-                                                    // does not update?
+                            waitingStudents.wait(); // Causes the current student thread to wait for
+                                                    // waitingStudents.notifyAll() call by TA
                         }
                     }
                     // If the student is not the current student being helped, then they are working
@@ -133,8 +136,8 @@ public class SleepingTA { // main class to encapsulate all components of the sim
                             waitingStudents.add(studentId); // Add student's ID to queue because student found a chair
                             System.out.println("Student " + studentId + " is waiting in the hallway with patience "
                                     + waitTime + " ms"); // How long the student will wait in the halllway
-                            waitingStudents.notify(); // Wake up the TA if they're sleeping //TODO - communicates with
-                                                      // line 41?
+                            waitingStudents.notify(); // Wake up the TA if they're sleeping //Notifies TA after
+                                                      // TA goes to sleep at line 41
                         }
 
                         synchronized (waitingStudents) { // Thread safe access to waitingStudents queue
@@ -152,12 +155,14 @@ public class SleepingTA { // main class to encapsulate all components of the sim
                                                                             // loops until student runs out of patience.
                             }
 
-                            if (studentId == currentStudent) { // TODO - TA grabs student to help them because queue
-                                                               // head has cycled to this student?
+                            if (studentId == currentStudent) { // TA grabs student to help them because queue
+                                                               // head has cycled to this student after
+                                                               // waitingStudents.poll() was called by TA
                                 // Student is being helped
                                 System.out.println("Student " + studentId + " is being helped by the TA...");
                                 // Wait until TA finishes helping
-                                waitingStudents.wait(); // TODO - waits until head of queue changes? How does this work?
+                                waitingStudents.wait(); // Makes student thread wait until TA calls
+                                                        // waitingStudents.notifyAll() command
                                 // Exit the loop after being helped
                                 break;
                             } else { // Student was not helped soon enough and left
@@ -190,9 +195,9 @@ public class SleepingTA { // main class to encapsulate all components of the sim
     static class Producer implements Runnable { // producer is ran as a thread
         private int n; // Number of students to create
         private List<Thread> studentThreads; // List of student threads to easily produce & clean up student threads
-                                             // later in main function // TODO - this list is filled out from main
-                                             // passing its student thread list to producer class? Filled out in
-                                             // producer constructor?
+                                             // later in main function // This list is filled out from main
+                                             // passing its student thread list to producer class. This list is filled
+                                             // out in the producer constructor
 
         public Producer(int n, List<Thread> studentThreads) { // producer constructor to initialize n and studentThreads
             this.n = n;
@@ -206,7 +211,8 @@ public class SleepingTA { // main class to encapsulate all components of the sim
             for (int i = 1; i <= n; i++) { // loops from 1 to n to create & start each student thread
 
                 // Generate a random wait time between 1000ms and 3000ms
-                int waitTime = random.nextInt(2000) + 1000; // TODO - lower & upper bound here? What are these?
+                int waitTime = random.nextInt(2000) + 1000; // 2000 generates values from 0 - 199 because the function
+                                                            // is exclusive. +1000 shifts to 1000 to 2999
 
                 Thread studentThread = new Thread(new Student(i, waitTime), "Student-" + i); // This creates the student
                                                                                              // thread with the wait
@@ -246,9 +252,10 @@ public class SleepingTA { // main class to encapsulate all components of the sim
 
         // Create and start the producer thread
         Producer producer = new Producer(n, studentThreads); // Creates a producer object
-        Thread producerThread = new Thread(producer, "Producer"); // Wraps producer object in a new thread // TODO - why
-                                                                  // do we wrap an object in a thread instead of just
-                                                                  // starting a thread?
+        Thread producerThread = new Thread(producer, "Producer"); // Wraps producer object in a new thread // The
+                                                                  // producer class generates a run method, but is not
+                                                                  // ran in a separate thread without creating a
+                                                                  // producer object & wrapping it in a thread here
         producerThread.start(); // Start the producer thread
 
         try { // Join synces producer thread & main thread, so main waits for producer to be
@@ -262,8 +269,9 @@ public class SleepingTA { // main class to encapsulate all components of the sim
 
         // Wait until all students have been helped
         while (totalStudentsHelped < n) { // Main will wait until all students have been helped by the TA
-            try { // Main sleeps for 1 second between checks to avoid busy waiting // TODO - isnt
-                  // this busy waiting?
+            try { // Main sleeps for 1 second between checks to avoid busy waiting
+                  // This is not busy waiting because main yields control for
+                  // 1 second between checks
                 Thread.sleep(1000); // Check every second
             } catch (InterruptedException e) { // If main thread is interrupted during sleep
                 Thread.currentThread().interrupt(); // main handles the exception
